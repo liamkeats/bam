@@ -79,6 +79,7 @@
 .app-header,
 .panel,
 .tab-btn,
+.shopping-filter-tab,
 .meal-card,
 .check-item,
 .inventory-card,
@@ -202,6 +203,8 @@
 
 .tab-btn:hover,
 .tab-btn:focus-visible,
+.shopping-filter-tab:hover,
+.shopping-filter-tab:focus-visible,
 .btn:hover,
 .btn:focus-visible,
 .check-item:hover,
@@ -214,6 +217,7 @@
 }
 
 .tab-btn:active,
+.shopping-filter-tab:active,
 .btn:active,
 .check-item:active,
 .inventory-card:active {
@@ -223,6 +227,7 @@
 .content-shell,
 .page-stack,
 .meal-card-list,
+.shopping-list-area,
 .inventory-list,
 .settings-stack,
 .about-stack,
@@ -234,6 +239,63 @@
 
 .tab-transition {
   animation: tab-enter 220ms ease;
+}
+
+.shopping-list-area {
+  gap: 12px;
+}
+
+.shopping-filter-row {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 2px 2px 4px;
+  scrollbar-width: none;
+}
+
+.shopping-filter-row::-webkit-scrollbar {
+  display: none;
+}
+
+.shopping-filter-tab {
+  flex: 0 0 auto;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    transform 180ms ease,
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease;
+}
+
+.shopping-filter-tab strong {
+  min-width: 1.7em;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 0.84rem;
+}
+
+.shopping-filter-tab.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.shopping-filter-tab.active strong {
+  background: rgba(4, 19, 10, 0.16);
+  color: inherit;
 }
 
 .panel,

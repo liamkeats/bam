@@ -65,6 +65,37 @@ const tabs = [
   { id: 'settings', label: 'Settings' },
 ]
 
+const shoppingFilters = [
+  { id: 'all', label: 'All' },
+  { id: 'need', label: 'Need to buy' },
+  { id: 'urgent', label: 'Out / urgent' },
+  { id: 'soon', label: 'Buy soon' },
+  { id: 'good', label: 'Good' },
+]
+
+const shoppingFilterEmptyStates = {
+  all: {
+    title: 'No tracked shopping items',
+    body: 'Inventory-tracked meal items will appear here.',
+  },
+  need: {
+    title: 'Nothing needs buying',
+    body: 'Out, urgent, and low-stock items will appear here.',
+  },
+  urgent: {
+    title: 'No out / urgent items',
+    body: 'Items below their urgent threshold will appear here.',
+  },
+  soon: {
+    title: 'No buy-soon items',
+    body: 'Low-stock items that are not urgent will appear here.',
+  },
+  good: {
+    title: 'No good-stock items yet',
+    body: 'Items with enough stock will appear here once inventory is updated.',
+  },
+}
+
 const statusLabels = {
   complete: 'Complete',
   flex: 'Flex',
@@ -93,6 +124,18 @@ function cleanFlags(flags = {}) {
 
 function countFlags(flags = {}) {
   return Object.keys(cleanFlags(flags)).length
+}
+
+function matchesShoppingFilter(filterId, item) {
+  if (filterId === 'all') {
+    return true
+  }
+
+  if (filterId === 'need') {
+    return item.status === 'urgent' || item.status === 'soon'
+  }
+
+  return item.status === filterId
 }
 
 function cleanAmounts(amounts = {}, consumedItems = {}) {
@@ -276,6 +319,7 @@ function App() {
   const completionRef = useRef(0)
 
   const [activeTab, setActiveTab] = useState('today')
+  const [activeShoppingFilter, setActiveShoppingFilter] = useState('all')
   const [amountInputs, setAmountInputs] = useState({})
   const [toasts, setToasts] = useState([])
   const [systemTheme, setSystemTheme] = useState(getSystemTheme)
@@ -375,6 +419,24 @@ function App() {
   const shoppingGroups = groupShoppingItems(shoppingItems)
   const urgentCount = shoppingGroups.urgent.length
   const soonCount = shoppingGroups.soon.length
+  const shoppingFilterCounts = {
+    all: shoppingItems.length,
+    need: urgentCount + soonCount,
+    urgent: urgentCount,
+    soon: soonCount,
+    good: shoppingGroups.good.length,
+  }
+  const shoppingFilterOptions = shoppingFilters.map((filter) => {
+    return {
+      ...filter,
+      count: shoppingFilterCounts[filter.id] ?? 0,
+    }
+  })
+  const filteredShoppingItems = shoppingItems.filter((item) =>
+    matchesShoppingFilter(activeShoppingFilter, item),
+  )
+  const activeShoppingEmptyState =
+    shoppingFilterEmptyStates[activeShoppingFilter] ?? shoppingFilterEmptyStates.all
   const isInventoryEmpty = shoppingItems.every((item) => item.currentAmount === 0)
   const isFirstRun = isInventoryEmpty && dayHistory.length === 0
   const flexUsedExcludingToday = weekStats.weekDays.filter(
@@ -1155,63 +1217,57 @@ function App() {
           </div>
         </article>
 
-        {[
-          {
-            key: 'urgent',
-            title: 'Out / urgent',
-            body: 'Less than the urgent threshold left.',
-          },
-          {
-            key: 'soon',
-            title: 'Buy soon',
-            body: 'Less than the low threshold left.',
-          },
-          {
-            key: 'good',
-            title: 'Good',
-            body: 'Enough stock on hand for now.',
-          },
-        ].map((group) => (
-          <article className="panel" key={group.key}>
-            <div className="panel-header">
-              <div>
-                <p className="eyebrow">{group.title}</p>
-                <h3>{group.body}</h3>
-              </div>
-            </div>
+        <section className="shopping-list-area" aria-label="Shopping item list">
+          <div className="shopping-filter-row" aria-label="Filter shopping items">
+            {shoppingFilterOptions.map((filter) => (
+              <button
+                type="button"
+                key={filter.id}
+                className={
+                  activeShoppingFilter === filter.id
+                    ? 'shopping-filter-tab active'
+                    : 'shopping-filter-tab'
+                }
+                aria-pressed={activeShoppingFilter === filter.id}
+                onClick={() => setActiveShoppingFilter(filter.id)}
+              >
+                <span>{filter.label}</span>
+                <strong>{filter.count}</strong>
+              </button>
+            ))}
+          </div>
 
-            <div className="inventory-list">
-              {shoppingGroups[group.key].length > 0 ? (
-                shoppingGroups[group.key].map((item) => (
-                  <InventoryCard
-                    key={item.id}
-                    item={item}
-                    checked={Boolean(shoppingChecks[item.id])}
-                    draftValue={
-                      amountInputs[item.id] ?? `${formatAmount(item.currentAmount)}`
-                    }
-                    onDraftChange={(itemId, value) =>
-                      setAmountInputs((current) => ({
-                        ...current,
-                        [itemId]: value,
-                      }))
-                    }
-                    onSetAmount={handleSetCurrentAmount}
-                    onAddRestock={handleAddRestock}
-                    onMarkBought={handleMarkBought}
-                    onClearItem={handleClearInventoryItem}
-                    onToggleCheck={handleShoppingCheck}
-                  />
-                ))
-              ) : (
-                <EmptyState
-                  title={`No ${group.title.toLowerCase()} items`}
-                  body="Everything in this section is clear right now."
+          <div className="inventory-list">
+            {filteredShoppingItems.length > 0 ? (
+              filteredShoppingItems.map((item) => (
+                <InventoryCard
+                  key={item.id}
+                  item={item}
+                  checked={Boolean(shoppingChecks[item.id])}
+                  draftValue={
+                    amountInputs[item.id] ?? `${formatAmount(item.currentAmount)}`
+                  }
+                  onDraftChange={(itemId, value) =>
+                    setAmountInputs((current) => ({
+                      ...current,
+                      [itemId]: value,
+                    }))
+                  }
+                  onSetAmount={handleSetCurrentAmount}
+                  onAddRestock={handleAddRestock}
+                  onMarkBought={handleMarkBought}
+                  onClearItem={handleClearInventoryItem}
+                  onToggleCheck={handleShoppingCheck}
                 />
-              )}
-            </div>
-          </article>
-        ))}
+              ))
+            ) : (
+              <EmptyState
+                title={activeShoppingEmptyState.title}
+                body={activeShoppingEmptyState.body}
+              />
+            )}
+          </div>
+        </section>
       </section>
     )
   }
