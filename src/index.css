@@ -1,0 +1,118 @@
+:root {
+  --good: #22c55e;
+  --warm: #f59e0b;
+  --danger: #ef4444;
+  --cool: #3b82f6;
+  --font-body: 'Avenir Next', 'Segoe UI', sans-serif;
+  --font-display: 'Trebuchet MS', 'Avenir Next', sans-serif;
+  font-family: var(--font-body);
+  line-height: 1.5;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html.theme-dark {
+  --page-bg: #071014;
+  --surface: #111a22;
+  --surface-elevated: #16212b;
+  --surface-raised: #0d151d;
+  --border: #263443;
+  --text: #f4f7fb;
+  --muted: #9fb0c3;
+  --muted-strong: #c7d3de;
+  --shadow:
+    rgba(3, 7, 11, 0.36) 0 14px 30px -18px,
+    rgba(3, 7, 11, 0.24) 0 8px 18px -16px;
+}
+
+html.theme-light {
+  --page-bg: #eef3f8;
+  --surface: #ffffff;
+  --surface-elevated: #f7fbff;
+  --surface-raised: #edf4fb;
+  --border: #d6e0eb;
+  --text: #0f1720;
+  --muted: #5b7084;
+  --muted-strong: #31465a;
+  --shadow:
+    rgba(15, 23, 32, 0.08) 0 18px 34px -24px,
+    rgba(15, 23, 32, 0.07) 0 8px 18px -18px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--page-bg);
+  color: var(--text);
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  outline: none;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid rgba(59, 130, 246, 0.35);
+  outline-offset: 2px;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--text);
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+h1 {
+  font-size: clamp(2rem, 5vw, 3.4rem);
+}
+
+h2 {
+  font-size: clamp(1.3rem, 3vw, 1.9rem);
+}
+
+h3 {
+  font-size: 1.12rem;
+}
+
+#root {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 18px 16px 32px;
+}
+
+::selection {
+  background: rgba(59, 130, 246, 0.18);
+}
+
+@media (min-width: 760px) {
+  #root {
+    padding: 24px 20px 40px;
+  }
+}
