@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import ProgressRing from './components/ProgressRing'
 import Toast from './components/Toast'
@@ -7,11 +7,15 @@ import TabButton from './components/TabButton'
 import ToggleSwitch from './components/ToggleSwitch'
 import MealCard from './components/MealCard'
 import InventoryCard from './components/InventoryCard'
+import ProductLinkModal from './components/ProductLinkModal'
 import { mealItems, mealSections } from './data/mealPlan'
 import {
   createBackupPayload,
   loadDayHistory,
   loadInventory,
+  loadProductInventory,
+  loadProductLinks,
+  loadProducts,
   loadSettings,
   loadShoppingChecks,
   parseBackupPayload,
@@ -20,6 +24,9 @@ import {
   resetStoredInventory,
   saveDayHistory,
   saveInventory,
+  saveProductInventory,
+  saveProductLinks,
+  saveProducts,
   saveSettings,
   saveShoppingChecks,
 } from './utils/storage'
@@ -30,11 +37,26 @@ import {
   createFilledInventory,
   formatAmount,
   formatInventoryLeft,
+  getInventoryStatus,
   getInventoryAmount,
   groupShoppingItems,
   mergeInventory,
   setInventoryAmount,
 } from './utils/inventory'
+import {
+  applyProductLinkToMealItem,
+  formatProductAmount,
+  formatProductLinkSummary,
+  normalizeProductInventory,
+  normalizeProductLinks,
+  normalizeProducts,
+  upsertLinkedProductInventory,
+} from './utils/products'
+import {
+  calculateDailyNutritionLog,
+  formatMacro,
+  getDefaultServingsForItem,
+} from './utils/nutrition'
 import {
   calculateAllTimeStats,
   calculateBestStreak,
@@ -61,6 +83,7 @@ const tabs = [
   { id: 'today', label: 'Today' },
   { id: 'meals', label: 'Meals' },
   { id: 'shopping', label: 'Shopping' },
+  { id: 'nutrition', label: 'Nutrition' },
   { id: 'stats', label: 'Stats' },
   { id: 'settings', label: 'Settings' },
 ]
@@ -68,9 +91,9 @@ const tabs = [
 const shoppingFilters = [
   { id: 'all', label: 'All' },
   { id: 'need', label: 'Need to buy' },
-  { id: 'urgent', label: 'Out / urgent' },
-  { id: 'soon', label: 'Buy soon' },
-  { id: 'good', label: 'Good' },
+  { id: 'out', label: 'Out' },
+  { id: 'low', label: 'Low' },
+  { id: 'have', label: 'Have' },
 ]
 
 const shoppingFilterEmptyStates = {
@@ -80,18 +103,18 @@ const shoppingFilterEmptyStates = {
   },
   need: {
     title: 'Nothing needs buying',
-    body: 'Out, urgent, and low-stock items will appear here.',
+    body: 'Out and low-stock items will appear here.',
   },
-  urgent: {
-    title: 'No out / urgent items',
-    body: 'Items below their urgent threshold will appear here.',
+  out: {
+    title: 'No out items',
+    body: 'Items with no usable inventory will appear here.',
   },
-  soon: {
-    title: 'No buy-soon items',
-    body: 'Low-stock items that are not urgent will appear here.',
+  low: {
+    title: 'No low items',
+    body: 'Items below their low-stock threshold will appear here.',
   },
-  good: {
-    title: 'No good-stock items yet',
+  have: {
+    title: 'No have-status items yet',
     body: 'Items with enough stock will appear here once inventory is updated.',
   },
 }
@@ -132,10 +155,10 @@ function matchesShoppingFilter(filterId, item) {
   }
 
   if (filterId === 'need') {
-    return item.status === 'urgent' || item.status === 'soon'
+    return item.shoppingStatus === 'need'
   }
 
-  return item.status === filterId
+  return item.inventoryStatus === filterId
 }
 
 function cleanAmounts(amounts = {}, consumedItems = {}) {
@@ -149,6 +172,18 @@ function cleanAmounts(amounts = {}, consumedItems = {}) {
   }, {})
 }
 
+function cleanServings(servings = {}, checkedItems = {}) {
+  return Object.keys(checkedItems).reduce((nextServings, itemId) => {
+    const parsedServings = Number(servings[itemId])
+
+    if (Number.isFinite(parsedServings) && parsedServings >= 0) {
+      nextServings[itemId] = parsedServings
+    }
+
+    return nextServings
+  }, {})
+}
+
 function createEmptyDay(date) {
   return {
     date,
@@ -156,6 +191,7 @@ function createEmptyDay(date) {
     checkedItems: {},
     consumedItems: {},
     consumedAmounts: {},
+    eatenServings: {},
   }
 }
 
@@ -163,6 +199,7 @@ function finalizeDay(day, totalItems, forcedStatus = day.status) {
   const checkedItems = cleanFlags(day.checkedItems)
   const consumedItems = cleanFlags(day.consumedItems)
   const consumedAmounts = cleanAmounts(day.consumedAmounts, consumedItems)
+  const eatenServings = cleanServings(day.eatenServings, checkedItems)
   const checkedCount = countFlags(checkedItems)
   let status = forcedStatus ?? null
 
@@ -172,6 +209,7 @@ function finalizeDay(day, totalItems, forcedStatus = day.status) {
       checkedItems,
       consumedItems,
       consumedAmounts,
+      eatenServings,
       status: 'flex',
     }
   }
@@ -182,6 +220,7 @@ function finalizeDay(day, totalItems, forcedStatus = day.status) {
       checkedItems,
       consumedItems,
       consumedAmounts,
+      eatenServings,
       status: 'missed',
     }
   }
@@ -194,7 +233,7 @@ function finalizeDay(day, totalItems, forcedStatus = day.status) {
     status = null
   }
 
-  return { ...day, checkedItems, consumedItems, consumedAmounts, status }
+  return { ...day, checkedItems, consumedItems, consumedAmounts, eatenServings, status }
 }
 
 function shouldKeepDay(day) {
@@ -249,6 +288,7 @@ function normalizeHistory(history, totalItems, itemMap) {
           checkedItems,
           consumedItems,
           consumedAmounts,
+          eatenServings: day?.eatenServings ?? {},
         },
         totalItems,
         day?.status ?? null,
@@ -311,8 +351,6 @@ function SetupCard({ onGoToShopping }) {
 }
 
 function App() {
-  const totalItems = mealItems.length
-  const itemMap = Object.fromEntries(mealItems.map((item) => [item.id, item]))
   const todayKey = getDateKey()
   const toastTimersRef = useRef(new Map())
   const toastIdRef = useRef(0)
@@ -321,14 +359,40 @@ function App() {
   const [activeTab, setActiveTab] = useState('today')
   const [activeShoppingFilter, setActiveShoppingFilter] = useState('all')
   const [amountInputs, setAmountInputs] = useState({})
+  const [selectedProductItemId, setSelectedProductItemId] = useState(null)
   const [toasts, setToasts] = useState([])
   const [systemTheme, setSystemTheme] = useState(getSystemTheme)
   const [completionPulse, setCompletionPulse] = useState(false)
+  const [products, setProducts] = useState(() =>
+    normalizeProducts(loadProducts()),
+  )
+  const [productLinks, setProductLinks] = useState(() =>
+    normalizeProductLinks(loadProductLinks()),
+  )
+  const [productInventory, setProductInventory] = useState(() =>
+    normalizeProductInventory(loadProductInventory()),
+  )
+  const effectiveMealItems = useMemo(
+    () =>
+      mealItems.map((item) =>
+        applyProductLinkToMealItem(
+          item,
+          productLinks[item.id],
+          products[productLinks[item.id]?.productId],
+        ),
+      ),
+    [productLinks, products],
+  )
+  const totalItems = effectiveMealItems.length
+  const itemMap = useMemo(
+    () => Object.fromEntries(effectiveMealItems.map((item) => [item.id, item])),
+    [effectiveMealItems],
+  )
   const [dayHistory, setDayHistory] = useState(() =>
     normalizeHistory(loadDayHistory(), totalItems, itemMap),
   )
   const [inventory, setInventory] = useState(() =>
-    mergeInventory(mealItems, loadInventory()),
+    mergeInventory(effectiveMealItems, loadInventory()),
   )
   const [shoppingChecks, setShoppingChecks] = useState(() =>
     cleanFlags(loadShoppingChecks()),
@@ -346,6 +410,18 @@ function App() {
   useEffect(() => {
     saveInventory(inventory)
   }, [inventory])
+
+  useEffect(() => {
+    saveProducts(products)
+  }, [products])
+
+  useEffect(() => {
+    saveProductLinks(productLinks)
+  }, [productLinks])
+
+  useEffect(() => {
+    saveProductInventory(productInventory)
+  }, [productInventory])
 
   useEffect(() => {
     saveShoppingChecks(shoppingChecks)
@@ -411,20 +487,22 @@ function App() {
   const allTimeStats = calculateAllTimeStats(dayHistory, totalItems)
   const historyStrip = getLastNDays(dayHistory, 14, todayKey)
   const shoppingItems = buildShoppingItems(
-    mealItems,
+    effectiveMealItems,
     inventory,
     shoppingChecks,
     settings,
   )
   const shoppingGroups = groupShoppingItems(shoppingItems)
-  const urgentCount = shoppingGroups.urgent.length
-  const soonCount = shoppingGroups.soon.length
+  const outCount = shoppingGroups.out.length
+  const lowCount = shoppingGroups.low.length
+  const haveCount = shoppingGroups.have.length
+  const needCount = outCount + lowCount
   const shoppingFilterCounts = {
     all: shoppingItems.length,
-    need: urgentCount + soonCount,
-    urgent: urgentCount,
-    soon: soonCount,
-    good: shoppingGroups.good.length,
+    need: needCount,
+    out: outCount,
+    low: lowCount,
+    have: haveCount,
   }
   const shoppingFilterOptions = shoppingFilters.map((filter) => {
     return {
@@ -447,10 +525,27 @@ function App() {
     settings.flexDaysPerWeek - weekStats.counts.flex,
   )
   const completedMealsToday = mealSections.filter((section) =>
-    mealItems
+    effectiveMealItems
       .filter((item) => item.meal === section.id)
       .every((item) => todayRecord.checkedItems[item.id]),
   ).length
+  const dailyNutritionLog = calculateDailyNutritionLog({
+    date: todayKey,
+    mealSections,
+    mealItems: effectiveMealItems,
+    products,
+    productLinks,
+    dayRecord: todayRecord,
+  })
+  const selectedProductItem = selectedProductItemId
+    ? itemMap[selectedProductItemId]
+    : null
+  const selectedProductLink = selectedProductItem
+    ? productLinks[selectedProductItem.id]
+    : null
+  const selectedProduct = selectedProductLink
+    ? products[selectedProductLink.productId]
+    : null
 
   useEffect(() => {
     if (
@@ -516,11 +611,43 @@ function App() {
     })
   }
 
+  function syncLinkedProductInventory(
+    currentProductInventory,
+    nextInventory,
+    items = effectiveMealItems,
+  ) {
+    return items.reduce((nextProductInventory, item) => {
+      if (!item.linkedProductId) {
+        return nextProductInventory
+      }
+
+      const product = products[item.linkedProductId]
+
+      if (!product) {
+        return nextProductInventory
+      }
+
+      const quantity = getInventoryAmount(nextInventory, item.id)
+      const status = getInventoryStatus(item, quantity, settings)
+
+      return upsertLinkedProductInventory({
+        productInventory: nextProductInventory,
+        product,
+        mealItemId: item.id,
+        quantity,
+        status,
+      })
+    }, currentProductInventory)
+  }
+
   function commitDay(nextDay, nextInventory = inventory, inventoryChanged = false) {
     setDayHistory((current) => saveDayRecord(current, nextDay))
 
     if (inventoryChanged) {
       setInventory(nextInventory)
+      setProductInventory((current) =>
+        syncLinkedProductInventory(current, nextInventory),
+      )
     }
   }
 
@@ -529,11 +656,13 @@ function App() {
     const nextCheckedItems = { ...day.checkedItems }
     const nextConsumedItems = { ...day.consumedItems }
     const nextConsumedAmounts = { ...day.consumedAmounts }
+    const nextEatenServings = { ...day.eatenServings }
     let nextInventory = inventory
     let inventoryChanged = false
 
     if (checked) {
       nextCheckedItems[item.id] = true
+      nextEatenServings[item.id] = getDefaultServingsForItem(item)
 
       if (item.trackInventory !== false && !nextConsumedItems[item.id]) {
         const deductedAmount = Math.min(
@@ -552,6 +681,7 @@ function App() {
       }
     } else {
       delete nextCheckedItems[item.id]
+      delete nextEatenServings[item.id]
 
       if (item.trackInventory !== false && nextConsumedItems[item.id]) {
         const deductedAmount = nextConsumedAmounts[item.id] ?? 0
@@ -575,6 +705,7 @@ function App() {
         checkedItems: nextCheckedItems,
         consumedItems: nextConsumedItems,
         consumedAmounts: nextConsumedAmounts,
+        eatenServings: nextEatenServings,
       },
       totalItems,
       nextStatus,
@@ -589,12 +720,13 @@ function App() {
   }
 
   function toggleMeal(mealId) {
-    const mealGroup = mealItems.filter((item) => item.meal === mealId)
+    const mealGroup = effectiveMealItems.filter((item) => item.meal === mealId)
     const section = mealSections.find((meal) => meal.id === mealId)
     const day = getDayRecord(dayHistory, todayKey)
     const nextCheckedItems = { ...day.checkedItems }
     const nextConsumedItems = { ...day.consumedItems }
     const nextConsumedAmounts = { ...day.consumedAmounts }
+    const nextEatenServings = { ...day.eatenServings }
     const everyItemChecked = mealGroup.every((item) => nextCheckedItems[item.id])
     let nextInventory = inventory
     let inventoryChanged = false
@@ -602,6 +734,7 @@ function App() {
     mealGroup.forEach((item) => {
       if (everyItemChecked) {
         delete nextCheckedItems[item.id]
+        delete nextEatenServings[item.id]
 
         if (item.trackInventory !== false && nextConsumedItems[item.id]) {
           const deductedAmount = nextConsumedAmounts[item.id] ?? 0
@@ -617,6 +750,7 @@ function App() {
         }
       } else {
         nextCheckedItems[item.id] = true
+        nextEatenServings[item.id] = getDefaultServingsForItem(item)
 
         if (item.trackInventory !== false && !nextConsumedItems[item.id]) {
           const deductedAmount = Math.min(
@@ -645,6 +779,7 @@ function App() {
         checkedItems: nextCheckedItems,
         consumedItems: nextConsumedItems,
         consumedAmounts: nextConsumedAmounts,
+        eatenServings: nextEatenServings,
       },
       totalItems,
       nextStatus,
@@ -665,11 +800,13 @@ function App() {
     const nextCheckedItems = { ...day.checkedItems }
     const nextConsumedItems = { ...day.consumedItems }
     const nextConsumedAmounts = { ...day.consumedAmounts }
+    const nextEatenServings = { ...day.eatenServings }
     let nextInventory = inventory
     let inventoryChanged = false
 
-    mealItems.forEach((item) => {
+    effectiveMealItems.forEach((item) => {
       nextCheckedItems[item.id] = true
+      nextEatenServings[item.id] = getDefaultServingsForItem(item)
 
       if (item.trackInventory !== false && !nextConsumedItems[item.id]) {
         const deductedAmount = Math.min(
@@ -695,6 +832,7 @@ function App() {
         checkedItems: nextCheckedItems,
         consumedItems: nextConsumedItems,
         consumedAmounts: nextConsumedAmounts,
+        eatenServings: nextEatenServings,
       },
       totalItems,
       'complete',
@@ -771,6 +909,7 @@ function App() {
         checkedItems: {},
         consumedItems: {},
         consumedAmounts: {},
+        eatenServings: {},
       },
       totalItems,
       'missed',
@@ -789,22 +928,41 @@ function App() {
       return
     }
 
-    setInventory((current) => setInventoryAmount(current, item.id, parsedValue))
+    const nextInventory = setInventoryAmount(inventory, item.id, parsedValue)
+
+    setInventory(nextInventory)
+    setProductInventory((current) =>
+      syncLinkedProductInventory(current, nextInventory, [item]),
+    )
     clearAmountInput(item.id)
     showToast('Inventory updated', `${item.name} saved.`, 'good')
   }
 
   function handleAddRestock(item) {
-    setInventory((current) =>
-      adjustInventoryAmount(current, item.id, item.restockAmount),
+    const nextInventory = adjustInventoryAmount(
+      inventory,
+      item.id,
+      item.restockAmount,
+    )
+
+    setInventory(nextInventory)
+    setProductInventory((current) =>
+      syncLinkedProductInventory(current, nextInventory, [item]),
     )
     clearAmountInput(item.id)
     showToast('Inventory updated', `${item.name} restocked.`, 'good')
   }
 
   function handleMarkBought(item) {
-    setInventory((current) =>
-      adjustInventoryAmount(current, item.id, item.restockAmount),
+    const nextInventory = adjustInventoryAmount(
+      inventory,
+      item.id,
+      item.restockAmount,
+    )
+
+    setInventory(nextInventory)
+    setProductInventory((current) =>
+      syncLinkedProductInventory(current, nextInventory, [item]),
     )
     setShoppingChecks((current) => {
       const next = { ...current }
@@ -820,7 +978,12 @@ function App() {
       return
     }
 
-    setInventory((current) => setInventoryAmount(current, item.id, 0))
+    const nextInventory = setInventoryAmount(inventory, item.id, 0)
+
+    setInventory(nextInventory)
+    setProductInventory((current) =>
+      syncLinkedProductInventory(current, nextInventory, [item]),
+    )
     clearAmountInput(item.id)
     showToast('Item cleared', `${item.name} set to 0.`, 'neutral')
   }
@@ -830,7 +993,12 @@ function App() {
       return
     }
 
-    setInventory(createFilledInventory(mealItems))
+    const nextInventory = createFilledInventory(effectiveMealItems)
+
+    setInventory(nextInventory)
+    setProductInventory((current) =>
+      syncLinkedProductInventory(current, nextInventory),
+    )
     setAmountInputs({})
     showToast('Default amounts added', 'Inventory filled from the meal plan.', 'good')
   }
@@ -840,7 +1008,12 @@ function App() {
       return
     }
 
-    setInventory(createEmptyInventory(mealItems))
+    const nextInventory = createEmptyInventory(effectiveMealItems)
+
+    setInventory(nextInventory)
+    setProductInventory((current) =>
+      syncLinkedProductInventory(current, nextInventory),
+    )
     setAmountInputs({})
     showToast('Inventory cleared', 'All current amounts were reset to 0.', 'danger')
   }
@@ -859,6 +1032,121 @@ function App() {
     })
   }
 
+  function handleOpenProduct(item) {
+    setSelectedProductItemId(item.id)
+  }
+
+  function handleProductLinked({ product, link, inventoryAmount, markAsHave }) {
+    const baseItem = mealItems.find((item) => item.id === link.mealItemId)
+
+    if (!baseItem) {
+      showToast('Could not link product', 'Meal item was not found.', 'danger')
+      return
+    }
+
+    const linkedItem = applyProductLinkToMealItem(baseItem, link, product)
+    const nextInventory = markAsHave && linkedItem.trackInventory !== false
+      ? setInventoryAmount(inventory, linkedItem.id, inventoryAmount)
+      : inventory
+    const linkedQuantity = getInventoryAmount(nextInventory, linkedItem.id)
+    const linkedStatus = getInventoryStatus(linkedItem, linkedQuantity, settings)
+
+    setProducts((current) => ({ ...current, [product.id]: product }))
+    setProductLinks((current) => ({ ...current, [linkedItem.id]: link }))
+    setProductInventory((current) =>
+      upsertLinkedProductInventory({
+        productInventory: current,
+        product,
+        mealItemId: linkedItem.id,
+        quantity: linkedQuantity,
+        status: linkedStatus,
+      }),
+    )
+
+    if (markAsHave && linkedItem.trackInventory !== false) {
+      setInventory(nextInventory)
+      setShoppingChecks((current) => {
+        const next = { ...current }
+        delete next[linkedItem.id]
+        return next
+      })
+      clearAmountInput(linkedItem.id)
+    }
+
+    if (todayRecord.checkedItems[linkedItem.id]) {
+      const nextDay = finalizeDay(
+        {
+          ...todayRecord,
+          eatenServings: {
+            ...todayRecord.eatenServings,
+            [linkedItem.id]: link.servingsNeeded,
+          },
+        },
+        totalItems,
+        todayRecord.status,
+      )
+
+      setDayHistory((current) => saveDayRecord(current, nextDay))
+    }
+
+    setSelectedProductItemId(null)
+    showToast(
+      'Product linked',
+      `${product.name} now powers ${linkedItem.name}.`,
+      'good',
+    )
+  }
+
+  function getConsumedAmountForServings(item, servings) {
+    return item.linkedProductId ? servings : item.amountPerUse * servings
+  }
+
+  function handleEatenServingsChange(item, value) {
+    const servings = Number(value)
+
+    if (!Number.isFinite(servings) || servings < 0) {
+      showToast('Enter valid servings', '', 'danger')
+      return
+    }
+
+    const day = getDayRecord(dayHistory, todayKey)
+
+    if (!day.checkedItems[item.id]) {
+      showToast('Mark the item eaten first', '', 'warm')
+      return
+    }
+
+    const nextEatenServings = {
+      ...day.eatenServings,
+      [item.id]: servings,
+    }
+    const nextConsumedAmounts = { ...day.consumedAmounts }
+    let nextInventory = inventory
+    let inventoryChanged = false
+
+    if (item.trackInventory !== false && day.consumedItems[item.id]) {
+      const nextConsumedAmount = getConsumedAmountForServings(item, servings)
+      const currentConsumedAmount = day.consumedAmounts[item.id] ?? 0
+      const inventoryDelta = currentConsumedAmount - nextConsumedAmount
+
+      nextConsumedAmounts[item.id] = nextConsumedAmount
+      nextInventory = adjustInventoryAmount(nextInventory, item.id, inventoryDelta)
+      inventoryChanged = true
+    }
+
+    const nextDay = finalizeDay(
+      {
+        ...day,
+        eatenServings: nextEatenServings,
+        consumedAmounts: nextConsumedAmounts,
+      },
+      totalItems,
+      day.status,
+    )
+
+    commitDay(nextDay, nextInventory, inventoryChanged)
+  }
+
   function handleResetShoppingChecks() {
     if (!window.confirm('Clear all shopping checkmarks?')) {
       return
@@ -874,6 +1162,9 @@ function App() {
       inventory,
       shoppingChecks,
       settings,
+      products,
+      productLinks,
+      productInventory,
     )
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
       type: 'application/json',
@@ -899,8 +1190,26 @@ function App() {
       const text = await file.text()
       const parsed = parseBackupPayload(text)
 
-      setDayHistory(normalizeHistory(parsed.dayHistory, totalItems, itemMap))
-      setInventory(mergeInventory(mealItems, parsed.inventory))
+      const parsedProducts = normalizeProducts(parsed.products)
+      const parsedProductLinks = normalizeProductLinks(parsed.productLinks)
+      const parsedEffectiveItems = mealItems.map((item) =>
+        applyProductLinkToMealItem(
+          item,
+          parsedProductLinks[item.id],
+          parsedProducts[parsedProductLinks[item.id]?.productId],
+        ),
+      )
+      const parsedItemMap = Object.fromEntries(
+        parsedEffectiveItems.map((item) => [item.id, item]),
+      )
+
+      setProducts(parsedProducts)
+      setProductLinks(parsedProductLinks)
+      setProductInventory(normalizeProductInventory(parsed.productInventory))
+      setInventory(mergeInventory(parsedEffectiveItems, parsed.inventory))
+      setDayHistory(
+        normalizeHistory(parsed.dayHistory, parsedEffectiveItems.length, parsedItemMap),
+      )
       setShoppingChecks(cleanFlags(parsed.shoppingChecks))
       setSettings(sanitizeSettings(parsed.settings))
       setAmountInputs({})
@@ -933,6 +1242,7 @@ function App() {
 
     resetStoredInventory()
     setInventory(createEmptyInventory(mealItems))
+    setProductInventory({})
     setShoppingChecks({})
     setAmountInputs({})
     showToast('Inventory cleared', 'Inventory and shopping checks were reset.', 'danger')
@@ -949,7 +1259,10 @@ function App() {
 
     resetAllStoredData()
     setDayHistory([])
-    setInventory(createEmptyInventory(mealItems))
+    setInventory(createEmptyInventory(effectiveMealItems))
+    setProducts({})
+    setProductLinks({})
+    setProductInventory({})
     setShoppingChecks({})
     setSettings(defaultSettings)
     setAmountInputs({})
@@ -1029,7 +1342,7 @@ function App() {
 
           <div className="summary-grid">
             {renderQuickBadge('Current streak', currentStreak, 'good')}
-            {renderQuickBadge('Urgent items', urgentCount, urgentCount ? 'danger' : 'neutral')}
+            {renderQuickBadge('Need items', needCount, needCount ? 'danger' : 'neutral')}
             {renderQuickBadge(
               'Flex remaining',
               `${flexRemaining}/${settings.flexDaysPerWeek}`,
@@ -1094,16 +1407,16 @@ function App() {
 
             <div className="summary-list">
               <div className="summary-line">
-                <span>Out / urgent</span>
-                <strong className="tone-danger">{urgentCount}</strong>
+                <span>Out</span>
+                <strong className="tone-danger">{outCount}</strong>
               </div>
               <div className="summary-line">
-                <span>Buy soon</span>
-                <strong className="tone-warm">{soonCount}</strong>
+                <span>Low</span>
+                <strong className="tone-warm">{lowCount}</strong>
               </div>
               <div className="summary-line">
-                <span>Good</span>
-                <strong className="tone-good">{shoppingGroups.good.length}</strong>
+                <span>Have</span>
+                <strong className="tone-good">{haveCount}</strong>
               </div>
             </div>
           </article>
@@ -1114,9 +1427,12 @@ function App() {
             <MealCard
               key={section.id}
               section={section}
-              items={mealItems.filter((item) => item.meal === section.id)}
+              items={effectiveMealItems.filter((item) => item.meal === section.id)}
               checkedItems={todayRecord.checkedItems}
               inventory={inventory}
+              products={products}
+              productLinks={productLinks}
+              onOpenProduct={handleOpenProduct}
               onToggleItem={toggleSingleItem}
               onToggleMeal={toggleMeal}
             />
@@ -1130,7 +1446,7 @@ function App() {
     return (
       <section className="card-grid">
         {mealSections.map((section) => {
-          const items = mealItems.filter((item) => item.meal === section.id)
+          const items = effectiveMealItems.filter((item) => item.meal === section.id)
 
           return (
             <article className="panel" key={section.id}>
@@ -1147,7 +1463,12 @@ function App() {
                     <div className="meal-item-text">
                       <strong>{item.displayAmount}</strong>
                       <span>
-                        {item.trackInventory === false
+                        {productLinks[item.id] && products[productLinks[item.id]?.productId]
+                          ? formatProductLinkSummary(
+                              productLinks[item.id],
+                              products[productLinks[item.id]?.productId],
+                            )
+                          : item.trackInventory === false
                           ? 'Not tracked in inventory'
                           : formatInventoryLeft(
                               item,
@@ -1155,6 +1476,13 @@ function App() {
                             )}
                       </span>
                     </div>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-small"
+                      onClick={() => handleOpenProduct(item)}
+                    >
+                      {productLinks[item.id] ? 'Edit product' : 'Scan product'}
+                    </button>
                   </div>
                 ))}
               </div>
@@ -1180,9 +1508,9 @@ function App() {
           </div>
 
           <div className="stat-grid">
-            <StatCard label="Out / urgent" value={urgentCount} tone="danger" />
-            <StatCard label="Buy soon" value={soonCount} tone="warm" />
-            <StatCard label="Good" value={shoppingGroups.good.length} tone="good" />
+            <StatCard label="Out" value={outCount} tone="danger" />
+            <StatCard label="Low" value={lowCount} tone="warm" />
+            <StatCard label="Have" value={haveCount} tone="good" />
             <StatCard
               label="Tracked items"
               value={shoppingItems.length}
@@ -1194,7 +1522,7 @@ function App() {
             <div className="notice-card tone-warm">
               <strong>Inventory starts empty.</strong>
               <p>
-                Most items show as urgent because nothing has been added yet. Enter
+                Most items show as out because nothing has been added yet. Enter
                 what you currently have at home to make the list accurate.
               </p>
             </div>
@@ -1244,6 +1572,8 @@ function App() {
                   key={item.id}
                   item={item}
                   checked={Boolean(shoppingChecks[item.id])}
+                  linkedProduct={products[productLinks[item.id]?.productId]}
+                  productLink={productLinks[item.id]}
                   draftValue={
                     amountInputs[item.id] ?? `${formatAmount(item.currentAmount)}`
                   }
@@ -1257,6 +1587,7 @@ function App() {
                   onAddRestock={handleAddRestock}
                   onMarkBought={handleMarkBought}
                   onClearItem={handleClearInventoryItem}
+                  onOpenProduct={handleOpenProduct}
                   onToggleCheck={handleShoppingCheck}
                 />
               ))
@@ -1267,6 +1598,144 @@ function App() {
               />
             )}
           </div>
+        </section>
+      </section>
+    )
+  }
+
+  function renderNutritionTab() {
+    const nutrientEntries = Object.values(dailyNutritionLog.nutrients)
+
+    return (
+      <section className="page-stack">
+        <article className="panel">
+          <div className="panel-header">
+            <div>
+              <p className="eyebrow">Nutrition</p>
+              <h2>{formatLongDate(todayKey)}</h2>
+            </div>
+          </div>
+
+          <div className="stat-grid stat-grid-large">
+            <StatCard
+              label="Calories"
+              value={formatMacro(dailyNutritionLog.totalCalories, ' cal')}
+              tone="cool"
+            />
+            <StatCard
+              label="Protein"
+              value={formatMacro(dailyNutritionLog.totalProtein)}
+              tone="good"
+            />
+            <StatCard
+              label="Carbs"
+              value={formatMacro(dailyNutritionLog.totalCarbs)}
+              tone="warm"
+            />
+            <StatCard
+              label="Fat"
+              value={formatMacro(dailyNutritionLog.totalFat)}
+              tone="neutral"
+            />
+            <StatCard
+              label="Fiber"
+              value={formatMacro(dailyNutritionLog.totalFiber)}
+              tone="good"
+            />
+            <StatCard
+              label="Sugar"
+              value={formatMacro(dailyNutritionLog.totalSugar)}
+              tone="warm"
+            />
+          </div>
+
+          {nutrientEntries.length > 0 ? (
+            <div className="nutrient-chip-row">
+              {nutrientEntries.map((nutrient) => (
+                <span className="mini-pill tone-cool" key={`${nutrient.label}-${nutrient.unit}`}>
+                  {nutrient.label}: {formatProductAmount(nutrient.amount)} {nutrient.unit}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </article>
+
+        <section className="nutrition-meal-list">
+          {dailyNutritionLog.meals.map((meal) => (
+            <article className="panel nutrition-meal-panel" key={meal.id}>
+              <div className="panel-header">
+                <div>
+                  <p className="eyebrow">{meal.title}</p>
+                  <h3>{meal.label}</h3>
+                </div>
+                <div className="meal-total-chip">
+                  <span>Meal total</span>
+                  <strong>{formatMacro(meal.totals.calories, ' cal')}</strong>
+                </div>
+              </div>
+
+              <div className="nutrition-item-list">
+                {meal.items.map((entry) => {
+                  const item = itemMap[entry.itemId]
+                  const linkedProduct = products[productLinks[entry.itemId]?.productId]
+                  const productLink = productLinks[entry.itemId]
+
+                  return (
+                    <div className="nutrition-item-row" key={entry.itemId}>
+                      <div className="nutrition-item-main">
+                        <strong>{entry.displayAmount}</strong>
+                        <span>
+                          {linkedProduct && productLink
+                            ? formatProductLinkSummary(productLink, linkedProduct)
+                            : entry.sourceLabel}
+                        </span>
+                      </div>
+
+                      <div className="nutrition-servings-control">
+                        <label className="field-group">
+                          <span>Servings eaten</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            disabled={!entry.checked}
+                            value={entry.checked ? entry.servingsEaten : 0}
+                            onChange={(event) =>
+                              handleEatenServingsChange(item, event.target.value)
+                            }
+                          />
+                        </label>
+                      </div>
+
+                      <div className="nutrition-macro-grid">
+                        <span>{formatMacro(entry.totals.calories, ' cal')}</span>
+                        <span>P {formatMacro(entry.totals.protein)}</span>
+                        <span>C {formatMacro(entry.totals.carbs)}</span>
+                        <span>F {formatMacro(entry.totals.fat)}</span>
+                      </div>
+
+                      <div className="action-row nutrition-row-actions">
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-small"
+                          onClick={() => toggleSingleItem(item, !entry.checked)}
+                        >
+                          {entry.checked ? 'Clear eaten' : 'Mark eaten'}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-small"
+                          onClick={() => handleOpenProduct(item)}
+                        >
+                          {productLink ? 'Edit product' : 'Add product'}
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </article>
+          ))}
         </section>
       </section>
     )
@@ -1604,6 +2073,10 @@ function App() {
       return renderShoppingTab()
     }
 
+    if (activeTab === 'nutrition') {
+      return renderNutritionTab()
+    }
+
     if (activeTab === 'stats') {
       return renderStatsTab()
     }
@@ -1636,8 +2109,8 @@ function App() {
             <strong>{bestStreak}</strong>
           </div>
           <div>
-            <span>Urgent items</span>
-            <strong>{urgentCount}</strong>
+            <span>Need items</span>
+            <strong>{needCount}</strong>
           </div>
         </div>
       </header>
@@ -1664,6 +2137,21 @@ function App() {
         hidden
         onChange={handleImportBackup}
       />
+
+      {selectedProductItem ? (
+        <ProductLinkModal
+          key={selectedProductItem.id}
+          item={selectedProductItem}
+          existingProduct={selectedProduct}
+          existingLink={selectedProductLink}
+          currentInventoryAmount={getInventoryAmount(
+            inventory,
+            selectedProductItem.id,
+          )}
+          onClose={() => setSelectedProductItemId(null)}
+          onSave={handleProductLinked}
+        />
+      ) : null}
 
       <Toast toasts={toasts} onDismiss={dismissToast} />
     </div>

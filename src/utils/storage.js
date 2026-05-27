@@ -1,6 +1,9 @@
 const STORAGE_KEYS = {
   dayHistory: 'bam-day-history',
   inventory: 'bam-inventory',
+  productInventory: 'bam-product-inventory',
+  productLinks: 'bam-product-links',
+  products: 'bam-products',
   shoppingChecks: 'bam-shopping-checks',
   settings: 'bam-settings',
 }
@@ -59,6 +62,30 @@ export function saveInventory(inventory) {
   writeJSON(STORAGE_KEYS.inventory, inventory)
 }
 
+export function loadProducts() {
+  return readJSON(STORAGE_KEYS.products, {})
+}
+
+export function saveProducts(products) {
+  writeJSON(STORAGE_KEYS.products, products)
+}
+
+export function loadProductLinks() {
+  return readJSON(STORAGE_KEYS.productLinks, {})
+}
+
+export function saveProductLinks(productLinks) {
+  writeJSON(STORAGE_KEYS.productLinks, productLinks)
+}
+
+export function loadProductInventory() {
+  return readJSON(STORAGE_KEYS.productInventory, {})
+}
+
+export function saveProductInventory(productInventory) {
+  writeJSON(STORAGE_KEYS.productInventory, productInventory)
+}
+
 export function loadShoppingChecks() {
   return readJSON(STORAGE_KEYS.shoppingChecks, {})
 }
@@ -75,12 +102,23 @@ export function saveSettings(settings) {
   writeJSON(STORAGE_KEYS.settings, settings)
 }
 
-export function createBackupPayload(dayHistory, inventory, shoppingChecks, settings) {
+export function createBackupPayload(
+  dayHistory,
+  inventory,
+  shoppingChecks,
+  settings,
+  products = {},
+  productLinks = {},
+  productInventory = {},
+) {
   return {
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     dayHistory,
     inventory,
+    productInventory,
+    productLinks,
+    products,
     shoppingChecks,
     settings,
   }
@@ -105,6 +143,18 @@ export function parseBackupPayload(text) {
       parsed.inventory && typeof parsed.inventory === 'object'
         ? parsed.inventory
         : {},
+    productInventory:
+      parsed.productInventory && typeof parsed.productInventory === 'object'
+        ? parsed.productInventory
+        : {},
+    productLinks:
+      parsed.productLinks && typeof parsed.productLinks === 'object'
+        ? parsed.productLinks
+        : {},
+    products:
+      parsed.products && typeof parsed.products === 'object'
+        ? parsed.products
+        : {},
     shoppingChecks:
       parsed.shoppingChecks && typeof parsed.shoppingChecks === 'object'
         ? parsed.shoppingChecks
@@ -118,6 +168,7 @@ export function parseBackupPayload(text) {
 
 export function resetStoredInventory() {
   removeKey(STORAGE_KEYS.inventory)
+  removeKey(STORAGE_KEYS.productInventory)
   removeKey(STORAGE_KEYS.shoppingChecks)
 }
 

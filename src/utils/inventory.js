@@ -161,19 +161,19 @@ function getThresholdsForItem(item, settings = {}) {
   }
 }
 
-function getStatus(item, currentAmount, settings) {
+export function getInventoryStatus(item, currentAmount, settings) {
   const daysLeft = getDaysLeft(currentAmount, item.amountPerUse)
   const thresholds = getThresholdsForItem(item, settings)
 
-  if (daysLeft < thresholds.urgentThresholdDays) {
-    return 'urgent'
+  if (currentAmount <= 0 || daysLeft < thresholds.urgentThresholdDays) {
+    return 'out'
   }
 
   if (daysLeft < thresholds.lowThresholdDays) {
-    return 'soon'
+    return 'low'
   }
 
-  return 'good'
+  return 'have'
 }
 
 export function buildShoppingItems(
@@ -182,14 +182,14 @@ export function buildShoppingItems(
   shoppingChecks = {},
   settings = {},
 ) {
-  const order = { urgent: 0, soon: 1, good: 2 }
+  const order = { out: 0, low: 1, need: 2, have: 3 }
 
   return items
     .filter((item) => item.trackInventory !== false)
     .map((item) => {
       const currentAmount = clampAmount(inventory[item.id] ?? 0)
       const daysLeft = getDaysLeft(currentAmount, item.amountPerUse)
-      const status = getStatus(item, currentAmount, settings)
+      const status = getInventoryStatus(item, currentAmount, settings)
       const thresholds = getThresholdsForItem(item, settings)
 
       return {
@@ -197,6 +197,8 @@ export function buildShoppingItems(
         currentAmount,
         daysLeft,
         status,
+        inventoryStatus: status,
+        shoppingStatus: status === 'have' ? 'have' : 'need',
         thresholds,
         checked: Boolean(shoppingChecks[item.id]),
       }
@@ -222,6 +224,6 @@ export function groupShoppingItems(items) {
       groups[item.status].push(item)
       return groups
     },
-    { urgent: [], soon: [], good: [] },
+    { out: [], low: [], have: [] },
   )
 }

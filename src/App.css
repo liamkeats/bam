@@ -87,7 +87,11 @@
 .history-day,
 .setup-card,
 .notice-card,
-.empty-state {
+.empty-state,
+.lookup-message,
+.product-result,
+.nutrition-item-row,
+.meal-total-chip {
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
 }
@@ -100,7 +104,8 @@
 .notice-card,
 .stat-card,
 .history-day,
-.empty-state {
+.empty-state,
+.product-modal {
   background: var(--surface);
 }
 
@@ -124,7 +129,11 @@
 .summary-line span,
 .progress-inline-copy span,
 .meal-progress-copy span,
-.stat-card span {
+.stat-card span,
+.scanner-status,
+.product-result span,
+.nutrition-item-main span,
+.meal-total-chip span {
   color: var(--muted);
 }
 
@@ -211,6 +220,8 @@
 .check-item:focus-within,
 .inventory-card:hover,
 .inventory-card:focus-within,
+.product-result:hover,
+.product-result:focus-visible,
 .meal-card:hover,
 .meal-card:focus-within {
   transform: translateY(-1px);
@@ -235,6 +246,16 @@
   display: flex;
   flex-direction: column;
   gap: var(--layout-gap);
+}
+
+.nutrition-meal-list,
+.nutrition-item-list,
+.product-results,
+.product-form,
+.scanner-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-gap);
 }
 
 .tab-transition {
@@ -442,6 +463,13 @@
     color 180ms ease;
 }
 
+.btn-small {
+  min-height: 40px;
+  padding: 9px 12px;
+  border-radius: 14px;
+  white-space: nowrap;
+}
+
 .btn-label {
   display: inline-flex;
   align-items: center;
@@ -570,6 +598,15 @@
     transform 180ms ease;
 }
 
+.check-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1 1 auto;
+  cursor: pointer;
+}
+
 .check-item.checked {
   border-color: var(--accent-border);
   background: var(--accent-soft);
@@ -635,6 +672,10 @@
 }
 
 .meal-plan-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 15px 16px;
   border-radius: 18px;
   border: 1px solid var(--border);
@@ -656,15 +697,15 @@
   opacity: 0.84;
 }
 
-.inventory-urgent {
+.inventory-out {
   border-color: rgba(239, 68, 68, 0.3);
 }
 
-.inventory-soon {
+.inventory-low {
   border-color: rgba(245, 158, 11, 0.3);
 }
 
-.inventory-good {
+.inventory-have {
   border-color: rgba(34, 197, 94, 0.2);
 }
 
@@ -756,6 +797,11 @@
   border: 1px solid var(--border);
   background: var(--surface-raised);
   color: var(--text);
+}
+
+.field-group input:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
 }
 
 .action-row {
@@ -932,6 +978,255 @@
   margin-bottom: 6px;
 }
 
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: auto;
+  padding: 18px;
+  background: rgba(3, 7, 11, 0.68);
+}
+
+.product-modal {
+  width: min(920px, 100%);
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+  padding: var(--card-padding);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
+}
+
+.modal-header,
+.modal-actions,
+.barcode-entry,
+.manual-search-row,
+.inventory-link-options,
+.nutrient-chip-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modal-header {
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.modal-close {
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-elevated);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 1.35rem;
+}
+
+.barcode-entry,
+.manual-search-row {
+  align-items: end;
+}
+
+.barcode-entry .field-group,
+.manual-search-row .field-group {
+  flex: 1 1 auto;
+}
+
+.scanner-shell {
+  position: relative;
+  overflow: hidden;
+  min-height: 260px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+}
+
+.scanner-video {
+  display: block;
+  width: 100%;
+  height: min(56vh, 380px);
+  object-fit: cover;
+}
+
+.scanner-frame {
+  position: absolute;
+  inset: 22%;
+  border: 2px solid var(--accent);
+  border-radius: 18px;
+  box-shadow: 0 0 0 999px rgba(3, 7, 11, 0.34);
+}
+
+.scanner-status {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 14px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(3, 7, 11, 0.72);
+  color: #f4f7fb;
+}
+
+.lookup-message {
+  margin: 14px 0;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--surface-elevated);
+  color: var(--muted-strong);
+}
+
+.lookup-success {
+  border-color: rgba(34, 197, 94, 0.28);
+  color: var(--good);
+}
+
+.lookup-error {
+  border-color: rgba(239, 68, 68, 0.28);
+  color: var(--danger);
+}
+
+.lookup-loading {
+  border-color: rgba(59, 130, 246, 0.28);
+  color: var(--cool);
+}
+
+.product-results {
+  margin: 12px 0;
+}
+
+.product-result {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 13px 14px;
+  border-radius: 16px;
+  background: var(--surface-elevated);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease;
+}
+
+.product-form-grid,
+.nutrition-macro-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.product-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.amount-match-panel,
+.inventory-link-options {
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: var(--surface-elevated);
+}
+
+.amount-match-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.amount-match-panel strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--text);
+}
+
+.toggle-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted-strong);
+  font-weight: 700;
+}
+
+.toggle-inline input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.modal-actions {
+  justify-content: flex-end;
+}
+
+.nutrient-chip-row {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  margin-top: 14px;
+}
+
+.meal-total-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--surface-elevated);
+}
+
+.meal-total-chip strong {
+  color: var(--text);
+}
+
+.nutrition-item-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(130px, 0.55fr) minmax(220px, 0.8fr);
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 18px;
+  background: var(--surface-elevated);
+}
+
+.nutrition-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.nutrition-item-main strong {
+  color: var(--text);
+}
+
+.nutrition-servings-control .field-group {
+  gap: 6px;
+}
+
+.nutrition-macro-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.nutrition-macro-grid span {
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: var(--surface-raised);
+  color: var(--muted-strong);
+  font-weight: 700;
+  text-align: center;
+}
+
+.nutrition-row-actions {
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+}
+
 .progress-ring {
   position: relative;
   width: var(--ring-size);
@@ -1059,18 +1354,21 @@
 }
 
 .status-badge.tone-good,
+.pill-have,
 .pill-good,
 .toast-good {
   color: var(--good);
 }
 
 .status-badge.tone-warm,
+.pill-low,
 .pill-soon,
 .toast-warm {
   color: var(--warm);
 }
 
 .status-badge.tone-danger,
+.pill-out,
 .pill-urgent,
 .toast-danger {
   color: var(--danger);
@@ -1158,6 +1456,10 @@
   .stat-grid-large {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
+
+  .nutrition-meal-panel .panel-header {
+    align-items: flex-start;
+  }
 }
 
 @media (max-width: 759px) {
@@ -1176,7 +1478,12 @@
   .meal-card-header,
   .inventory-card-top,
   .progress-inline-copy,
-  .about-row {
+  .about-row,
+  .modal-header,
+  .barcode-entry,
+  .manual-search-row,
+  .inventory-link-options,
+  .meal-plan-row {
     flex-direction: column;
     align-items: flex-start;
   }
@@ -1199,5 +1506,41 @@
     right: 50%;
     transform: translateX(50%);
     bottom: 14px;
+  }
+
+  .check-item {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .check-item .btn-small,
+  .meal-plan-row .btn-small,
+  .barcode-entry .btn,
+  .manual-search-row .btn {
+    width: 100%;
+  }
+
+  .product-form-grid,
+  .nutrition-item-row,
+  .nutrition-macro-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .modal-backdrop {
+    padding: 10px;
+  }
+
+  .product-modal {
+    max-height: calc(100vh - 20px);
+  }
+
+  .modal-actions,
+  .nutrition-row-actions {
+    justify-content: stretch;
+  }
+
+  .modal-actions .btn,
+  .nutrition-row-actions .btn {
+    flex: 1 1 0;
   }
 }

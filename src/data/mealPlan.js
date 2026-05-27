@@ -1,4 +1,48 @@
-export const mealItems = [
+const defaultNutritionById = {
+  eggs: { caloriesPerServing: 140, proteinPerServing: 12, carbsPerServing: 1, fatPerServing: 10 },
+  'whole-wheat-toast': { caloriesPerServing: 160, proteinPerServing: 6, carbsPerServing: 28, fatPerServing: 2, fiberPerServing: 4, sugarPerServing: 4 },
+  'breakfast-meat': { caloriesPerServing: 80, proteinPerServing: 12, carbsPerServing: 1, fatPerServing: 3 },
+  banana: { caloriesPerServing: 105, proteinPerServing: 1.3, carbsPerServing: 27, fatPerServing: 0.4, fiberPerServing: 3, sugarPerServing: 14 },
+  'vitamin-d3': {
+    caloriesPerServing: 0,
+    proteinPerServing: 0,
+    carbsPerServing: 0,
+    fatPerServing: 0,
+    nutrients: { vitaminD: { label: 'Vitamin D', amount: 2000, unit: 'IU' } },
+  },
+  'omega-3': {
+    caloriesPerServing: 10,
+    proteinPerServing: 0,
+    carbsPerServing: 0,
+    fatPerServing: 1,
+    nutrients: { omega3: { label: 'Omega-3', amount: 1000, unit: 'mg' } },
+  },
+  water: { caloriesPerServing: 0, proteinPerServing: 0, carbsPerServing: 0, fatPerServing: 0 },
+  chicken: { caloriesPerServing: 280, proteinPerServing: 52, carbsPerServing: 0, fatPerServing: 6 },
+  rice: { caloriesPerServing: 155, proteinPerServing: 3, carbsPerServing: 34, fatPerServing: 0.3, fiberPerServing: 0.6 },
+  'romaine-spinach': { caloriesPerServing: 15, proteinPerServing: 1, carbsPerServing: 3, fatPerServing: 0.2, fiberPerServing: 2 },
+  cucumber: { caloriesPerServing: 15, proteinPerServing: 0.7, carbsPerServing: 3.5, fatPerServing: 0.1, fiberPerServing: 0.5 },
+  tomato: { caloriesPerServing: 22, proteinPerServing: 1, carbsPerServing: 5, fatPerServing: 0.2, fiberPerServing: 1.5, sugarPerServing: 3.2 },
+  'bell-pepper': { caloriesPerServing: 18, proteinPerServing: 0.6, carbsPerServing: 4.2, fatPerServing: 0.2, fiberPerServing: 1.5, sugarPerServing: 2.5 },
+  broccoli: { caloriesPerServing: 55, proteinPerServing: 3.7, carbsPerServing: 11, fatPerServing: 0.6, fiberPerServing: 5.1, sugarPerServing: 2.2 },
+  tzatziki: { caloriesPerServing: 35, proteinPerServing: 2, carbsPerServing: 2, fatPerServing: 2.5 },
+  apple: { caloriesPerServing: 95, proteinPerServing: 0.5, carbsPerServing: 25, fatPerServing: 0.3, fiberPerServing: 4.4, sugarPerServing: 19 },
+  'protein-powder': { caloriesPerServing: 120, proteinPerServing: 24, carbsPerServing: 3, fatPerServing: 1.5 },
+  milk: { caloriesPerServing: 130, proteinPerServing: 8, carbsPerServing: 12, fatPerServing: 5, sugarPerServing: 12 },
+  'frozen-berries': { caloriesPerServing: 70, proteinPerServing: 1, carbsPerServing: 17, fatPerServing: 0.5, fiberPerServing: 5, sugarPerServing: 10 },
+  beef: { caloriesPerServing: 375, proteinPerServing: 44, carbsPerServing: 0, fatPerServing: 22 },
+  potato: { caloriesPerServing: 160, proteinPerServing: 4, carbsPerServing: 37, fatPerServing: 0.2, fiberPerServing: 4 },
+  'supper-broccoli': { caloriesPerServing: 55, proteinPerServing: 3.7, carbsPerServing: 11, fatPerServing: 0.6, fiberPerServing: 5.1, sugarPerServing: 2.2 },
+  peas: { caloriesPerServing: 67, proteinPerServing: 4, carbsPerServing: 12, fatPerServing: 0.4, fiberPerServing: 4.4, sugarPerServing: 4 },
+  corn: { caloriesPerServing: 72, proteinPerServing: 2.4, carbsPerServing: 16, fatPerServing: 1, fiberPerServing: 2, sugarPerServing: 2.9 },
+}
+
+const targetOverridesById = {
+  'vitamin-d3': { targetAmount: 2000, targetUnit: 'IU' },
+  'omega-3': { targetAmount: 1000, targetUnit: 'mg' },
+}
+
+const baseMealItems = [
   {
     id: 'eggs',
     name: 'Whole eggs',
@@ -291,6 +335,13 @@ export const mealItems = [
     urgentThresholdDays: 1,
   },
 ]
+
+export const mealItems = baseMealItems.map((item) => ({
+  ...item,
+  targetAmount: targetOverridesById[item.id]?.targetAmount ?? item.amountPerUse,
+  targetUnit: targetOverridesById[item.id]?.targetUnit ?? item.unit,
+  defaultNutrition: defaultNutritionById[item.id],
+}))
 
 export const mealSections = [
   {

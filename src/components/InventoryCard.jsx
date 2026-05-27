@@ -1,20 +1,24 @@
 import { formatAmount } from '../utils/inventory'
+import { formatProductLinkSummary, getProductDisplayName } from '../utils/products'
 
 const shoppingStatusLabels = {
-  urgent: 'Out / urgent',
-  soon: 'Buy soon',
-  good: 'Good',
+  out: 'Out',
+  low: 'Low',
+  have: 'Have',
 }
 
 function InventoryCard({
   item,
   draftValue,
   checked,
+  linkedProduct,
+  productLink,
   onDraftChange,
   onSetAmount,
   onAddRestock,
   onMarkBought,
   onClearItem,
+  onOpenProduct,
   onToggleCheck,
 }) {
   return (
@@ -66,6 +70,20 @@ function InventoryCard({
           <span className="meta-label">Status</span>
           <strong className="meta-value">{shoppingStatusLabels[item.status]}</strong>
         </div>
+        <div className="inventory-meta-item">
+          <span className="meta-label">Linked product</span>
+          <strong className="meta-value">
+            {linkedProduct ? getProductDisplayName(linkedProduct) : 'Not linked'}
+          </strong>
+        </div>
+        <div className="inventory-meta-item">
+          <span className="meta-label">Daily product amount</span>
+          <strong className="meta-value">
+            {productLink && linkedProduct
+              ? formatProductLinkSummary(productLink, linkedProduct)
+              : 'Uses plan amount'}
+          </strong>
+        </div>
       </div>
 
       <div className="inventory-actions">
@@ -86,6 +104,9 @@ function InventoryCard({
           </button>
           <button type="button" className="btn btn-secondary" onClick={() => onAddRestock(item)}>
             Add restock amount
+          </button>
+          <button type="button" className="btn btn-secondary" onClick={() => onOpenProduct(item)}>
+            {productLink ? 'Edit product' : 'Scan product'}
           </button>
           <button type="button" className="btn btn-primary" onClick={() => onMarkBought(item)}>
             Mark bought

@@ -5,6 +5,9 @@ function MealCard({
   items,
   checkedItems,
   inventory,
+  products,
+  productLinks,
+  onOpenProduct,
   onToggleItem,
   onToggleMeal,
 }) {
@@ -53,6 +56,9 @@ function MealCard({
             item={item}
             checked={Boolean(checkedItems[item.id])}
             inventory={inventory}
+            linkedProduct={products[productLinks[item.id]?.productId]}
+            productLink={productLinks[item.id]}
+            onOpenProduct={onOpenProduct}
             onToggle={onToggleItem}
           />
         ))}
