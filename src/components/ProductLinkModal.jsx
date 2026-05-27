@@ -9,6 +9,7 @@ import {
   inferProductAmountForTarget,
   inferProductUnitForTarget,
   lookupOpenFoodFactsProduct,
+  normalizeUnit,
   sanitizeProduct,
   searchOpenFoodFactsProducts,
 } from '../utils/products'
@@ -44,12 +45,19 @@ function firstNutrient(product, item) {
 
 function productToForm(item, product, link) {
   const targetAmount = link?.targetAmount ?? item.targetAmount ?? item.amountPerUse ?? 1
-  const targetUnit = link?.targetUnit ?? item.targetUnit ?? item.unit ?? 'serving'
-  const productAmountPerServing =
-    link?.productAmountPerServing ??
-    inferProductAmountForTarget(item, product, targetUnit)
-  const productUnit =
-    link?.productUnit ?? inferProductUnitForTarget(item, product, targetUnit)
+  const targetUnit = normalizeUnit(link?.targetUnit ?? item.targetUnit ?? item.unit) ?? 'serving'
+  const inferredProductUnit = inferProductUnitForTarget(item, product, targetUnit)
+  const linkedProductUnit = normalizeUnit(link?.productUnit)
+  const productUnit = linkedProductUnit ?? inferredProductUnit
+  const shouldRepairCountServing =
+    product.source === 'open_food_facts' &&
+    linkedProductUnit === normalizeUnit(product.servingUnit) &&
+    normalizeUnit(targetUnit) === normalizeUnit(product.servingUnit) &&
+    product.servingSize > 0
+  const productAmountPerServing = shouldRepairCountServing
+    ? product.servingSize
+    : link?.productAmountPerServing ??
+      inferProductAmountForTarget(item, product, targetUnit)
   const nutrient = firstNutrient(product, item)
 
   return {

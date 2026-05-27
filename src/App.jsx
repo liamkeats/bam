@@ -7,12 +7,14 @@ import TabButton from './components/TabButton'
 import ToggleSwitch from './components/ToggleSwitch'
 import MealCard from './components/MealCard'
 import InventoryCard from './components/InventoryCard'
+import MealItemEditorModal from './components/MealItemEditorModal'
 import ProductLinkModal from './components/ProductLinkModal'
 import { mealItems, mealSections } from './data/mealPlan'
 import {
   createBackupPayload,
   loadDayHistory,
   loadInventory,
+  loadMealItemOverrides,
   loadProductInventory,
   loadProductLinks,
   loadProducts,
@@ -24,6 +26,7 @@ import {
   resetStoredInventory,
   saveDayHistory,
   saveInventory,
+  saveMealItemOverrides,
   saveProductInventory,
   saveProductLinks,
   saveProducts,
@@ -45,6 +48,7 @@ import {
 } from './utils/inventory'
 import {
   applyProductLinkToMealItem,
+  createProductLink,
   formatProductAmount,
   formatProductLinkSummary,
   normalizeProductInventory,
@@ -53,7 +57,13 @@ import {
   upsertLinkedProductInventory,
 } from './utils/products'
 import {
+  applyMealItemOverrides,
+  createMealItemOverride,
+  normalizeMealItemOverrides,
+} from './utils/mealItems'
+import {
   calculateDailyNutritionLog,
+  calculatePlannedNutritionLog,
   formatMacro,
   getDefaultServingsForItem,
 } from './utils/nutrition'
@@ -359,6 +369,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('today')
   const [activeShoppingFilter, setActiveShoppingFilter] = useState('all')
   const [amountInputs, setAmountInputs] = useState({})
+  const [selectedMealItemId, setSelectedMealItemId] = useState(null)
   const [selectedProductItemId, setSelectedProductItemId] = useState(null)
   const [toasts, setToasts] = useState([])
   const [systemTheme, setSystemTheme] = useState(getSystemTheme)
@@ -372,16 +383,27 @@ function App() {
   const [productInventory, setProductInventory] = useState(() =>
     normalizeProductInventory(loadProductInventory()),
   )
+  const [mealItemOverrides, setMealItemOverrides] = useState(() =>
+    normalizeMealItemOverrides(loadMealItemOverrides(), mealItems),
+  )
+  const baseMealItems = useMemo(
+    () => applyMealItemOverrides(mealItems, mealItemOverrides),
+    [mealItemOverrides],
+  )
+  const baseItemMap = useMemo(
+    () => Object.fromEntries(baseMealItems.map((item) => [item.id, item])),
+    [baseMealItems],
+  )
   const effectiveMealItems = useMemo(
     () =>
-      mealItems.map((item) =>
+      baseMealItems.map((item) =>
         applyProductLinkToMealItem(
           item,
           productLinks[item.id],
           products[productLinks[item.id]?.productId],
         ),
       ),
-    [productLinks, products],
+    [baseMealItems, productLinks, products],
   )
   const totalItems = effectiveMealItems.length
   const itemMap = useMemo(
@@ -410,6 +432,10 @@ function App() {
   useEffect(() => {
     saveInventory(inventory)
   }, [inventory])
+
+  useEffect(() => {
+    saveMealItemOverrides(mealItemOverrides)
+  }, [mealItemOverrides])
 
   useEffect(() => {
     saveProducts(products)
@@ -537,6 +563,18 @@ function App() {
     productLinks,
     dayRecord: todayRecord,
   })
+  const plannedNutritionLog = calculatePlannedNutritionLog({
+    mealSections,
+    mealItems: effectiveMealItems,
+    products,
+    productLinks,
+  })
+  const plannedMealNutritionMap = Object.fromEntries(
+    plannedNutritionLog.meals.map((meal) => [meal.id, meal]),
+  )
+  const selectedMealItem = selectedMealItemId
+    ? baseItemMap[selectedMealItemId]
+    : null
   const selectedProductItem = selectedProductItemId
     ? itemMap[selectedProductItemId]
     : null
@@ -1036,8 +1074,55 @@ function App() {
     setSelectedProductItemId(item.id)
   }
 
+  function handleOpenMealItem(item) {
+    setSelectedMealItemId(item.id)
+  }
+
+  function handleMealItemSaved(item, formValues) {
+    const override = createMealItemOverride(item, formValues)
+    const nextBaseItem = {
+      ...item,
+      ...override,
+      defaultNutrition: {
+        ...(item.defaultNutrition ?? {}),
+        ...(override.defaultNutrition ?? {}),
+      },
+    }
+    const existingLink = productLinks[item.id]
+    const existingProduct = existingLink ? products[existingLink.productId] : null
+
+    setMealItemOverrides((current) => ({
+      ...current,
+      [item.id]: override,
+    }))
+
+    if (existingProduct) {
+      const nextLink = createProductLink(nextBaseItem, existingProduct, {
+        targetAmount: override.targetAmount,
+        targetUnit: override.targetUnit,
+        productAmountPerServing: existingLink.productAmountPerServing,
+        productUnit: existingLink.productUnit,
+      })
+
+      setProductLinks((current) => ({ ...current, [item.id]: nextLink }))
+    }
+
+    setSelectedMealItemId(null)
+    showToast('Meal item saved', `${override.displayAmount} is now in the plan.`, 'good')
+  }
+
+  function handleMealItemReset(item) {
+    setMealItemOverrides((current) => {
+      const next = { ...current }
+      delete next[item.id]
+      return next
+    })
+    setSelectedMealItemId(null)
+    showToast('Meal item reset', `${item.name} is back to the default plan.`, 'neutral')
+  }
+
   function handleProductLinked({ product, link, inventoryAmount, markAsHave }) {
-    const baseItem = mealItems.find((item) => item.id === link.mealItemId)
+    const baseItem = baseMealItems.find((item) => item.id === link.mealItemId)
 
     if (!baseItem) {
       showToast('Could not link product', 'Meal item was not found.', 'danger')
@@ -1162,6 +1247,7 @@ function App() {
       inventory,
       shoppingChecks,
       settings,
+      mealItemOverrides,
       products,
       productLinks,
       productInventory,
@@ -1190,9 +1276,17 @@ function App() {
       const text = await file.text()
       const parsed = parseBackupPayload(text)
 
+      const parsedMealItemOverrides = normalizeMealItemOverrides(
+        parsed.mealItemOverrides,
+        mealItems,
+      )
+      const parsedBaseItems = applyMealItemOverrides(
+        mealItems,
+        parsedMealItemOverrides,
+      )
       const parsedProducts = normalizeProducts(parsed.products)
       const parsedProductLinks = normalizeProductLinks(parsed.productLinks)
-      const parsedEffectiveItems = mealItems.map((item) =>
+      const parsedEffectiveItems = parsedBaseItems.map((item) =>
         applyProductLinkToMealItem(
           item,
           parsedProductLinks[item.id],
@@ -1203,6 +1297,7 @@ function App() {
         parsedEffectiveItems.map((item) => [item.id, item]),
       )
 
+      setMealItemOverrides(parsedMealItemOverrides)
       setProducts(parsedProducts)
       setProductLinks(parsedProductLinks)
       setProductInventory(normalizeProductInventory(parsed.productInventory))
@@ -1241,7 +1336,7 @@ function App() {
     }
 
     resetStoredInventory()
-    setInventory(createEmptyInventory(mealItems))
+    setInventory(createEmptyInventory(effectiveMealItems))
     setProductInventory({})
     setShoppingChecks({})
     setAmountInputs({})
@@ -1259,7 +1354,8 @@ function App() {
 
     resetAllStoredData()
     setDayHistory([])
-    setInventory(createEmptyInventory(effectiveMealItems))
+    setInventory(createEmptyInventory(mealItems))
+    setMealItemOverrides({})
     setProducts({})
     setProductLinks({})
     setProductInventory({})
@@ -1430,8 +1526,10 @@ function App() {
               items={effectiveMealItems.filter((item) => item.meal === section.id)}
               checkedItems={todayRecord.checkedItems}
               inventory={inventory}
+              plannedMeal={plannedMealNutritionMap[section.id]}
               products={products}
               productLinks={productLinks}
+              onOpenMealItem={handleOpenMealItem}
               onOpenProduct={handleOpenProduct}
               onToggleItem={toggleSingleItem}
               onToggleMeal={toggleMeal}
@@ -1447,6 +1545,7 @@ function App() {
       <section className="card-grid">
         {mealSections.map((section) => {
           const items = effectiveMealItems.filter((item) => item.meal === section.id)
+          const plannedMeal = plannedMealNutritionMap[section.id]
 
           return (
             <article className="panel" key={section.id}>
@@ -1456,6 +1555,15 @@ function App() {
                   <h3>{section.label}</h3>
                 </div>
               </div>
+
+              {plannedMeal ? (
+                <div className="meal-macro-strip meal-plan-macro-strip">
+                  <span>{formatMacro(plannedMeal.totals.calories, ' cal')}</span>
+                  <span>P {formatMacro(plannedMeal.totals.protein)}</span>
+                  <span>C {formatMacro(plannedMeal.totals.carbs)}</span>
+                  <span>F {formatMacro(plannedMeal.totals.fat)}</span>
+                </div>
+              ) : null}
 
               <div className="meal-plan-list">
                 {items.map((item) => (
@@ -1474,15 +1582,24 @@ function App() {
                               item,
                               getInventoryAmount(inventory, item.id),
                             )}
-                      </span>
+                        </span>
                     </div>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-small"
-                      onClick={() => handleOpenProduct(item)}
-                    >
-                      {productLinks[item.id] ? 'Edit product' : 'Scan product'}
-                    </button>
+                    <div className="check-actions">
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-small"
+                        onClick={() => handleOpenMealItem(item)}
+                      >
+                        Edit item
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-small"
+                        onClick={() => handleOpenProduct(item)}
+                      >
+                        {productLinks[item.id] ? 'Edit product' : 'Scan product'}
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -2137,6 +2254,17 @@ function App() {
         hidden
         onChange={handleImportBackup}
       />
+
+      {selectedMealItem ? (
+        <MealItemEditorModal
+          key={selectedMealItem.id}
+          item={selectedMealItem}
+          hasOverride={Boolean(mealItemOverrides[selectedMealItem.id])}
+          onClose={() => setSelectedMealItemId(null)}
+          onReset={handleMealItemReset}
+          onSave={handleMealItemSaved}
+        />
+      ) : null}
 
       {selectedProductItem ? (
         <ProductLinkModal

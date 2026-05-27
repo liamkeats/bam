@@ -206,6 +206,34 @@ export function calculateDailyNutritionLog({
   }
 }
 
+export function calculatePlannedNutritionLog({
+  mealSections,
+  mealItems,
+  products,
+  productLinks,
+}) {
+  const checkedItems = mealItems.reduce((items, item) => {
+    items[item.id] = true
+    return items
+  }, {})
+  const eatenServings = mealItems.reduce((servings, item) => {
+    servings[item.id] = getDefaultServingsForItem(item)
+    return servings
+  }, {})
+
+  return calculateDailyNutritionLog({
+    date: 'planned',
+    mealSections,
+    mealItems,
+    products,
+    productLinks,
+    dayRecord: {
+      checkedItems,
+      eatenServings,
+    },
+  })
+}
+
 export function formatMacro(value, suffix = 'g') {
   return `${formatProductAmount(value)}${suffix}`
 }

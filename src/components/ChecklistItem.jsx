@@ -7,6 +7,7 @@ function ChecklistItem({
   inventory,
   linkedProduct,
   productLink,
+  onOpenMealItem,
   onOpenProduct,
   onToggle,
 }) {
@@ -35,13 +36,22 @@ function ChecklistItem({
           <span>{helperText}</span>
         </span>
       </label>
-      <button
-        type="button"
-        className="btn btn-secondary btn-small"
-        onClick={() => onOpenProduct(item)}
-      >
-        {productLink ? 'Product' : 'Scan product'}
-      </button>
+      <div className="check-actions">
+        <button
+          type="button"
+          className="btn btn-secondary btn-small"
+          onClick={() => onOpenMealItem(item)}
+        >
+          Edit item
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary btn-small"
+          onClick={() => onOpenProduct(item)}
+        >
+          {productLink ? 'Product' : 'Scan product'}
+        </button>
+      </div>
     </div>
   )
 }

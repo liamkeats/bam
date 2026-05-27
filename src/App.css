@@ -258,6 +258,15 @@
   gap: var(--section-gap);
 }
 
+.check-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .tab-transition {
   animation: tab-enter 220ms ease;
 }
@@ -420,6 +429,27 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.meal-macro-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.meal-plan-macro-strip {
+  margin-bottom: 14px;
+}
+
+.meal-macro-strip span {
+  padding: 9px 10px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface-elevated);
+  color: var(--muted-strong);
+  font-size: 0.86rem;
+  font-weight: 700;
+  text-align: center;
 }
 
 .meal-progress-percent {
@@ -1513,6 +1543,11 @@
     flex-direction: column;
   }
 
+  .check-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
   .check-item .btn-small,
   .meal-plan-row .btn-small,
   .barcode-entry .btn,
@@ -1522,7 +1557,8 @@
 
   .product-form-grid,
   .nutrition-item-row,
-  .nutrition-macro-grid {
+  .nutrition-macro-grid,
+  .meal-macro-strip {
     grid-template-columns: minmax(0, 1fr);
   }
 

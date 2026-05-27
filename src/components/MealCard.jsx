@@ -1,12 +1,15 @@
 import ChecklistItem from './ChecklistItem'
+import { formatMacro } from '../utils/nutrition'
 
 function MealCard({
   section,
   items,
   checkedItems,
   inventory,
+  plannedMeal,
   products,
   productLinks,
+  onOpenMealItem,
   onOpenProduct,
   onToggleItem,
   onToggleMeal,
@@ -37,6 +40,15 @@ function MealCard({
         </button>
       </div>
 
+      {plannedMeal ? (
+        <div className="meal-macro-strip" aria-label={`${section.title} planned macros`}>
+          <span>{formatMacro(plannedMeal.totals.calories, ' cal')}</span>
+          <span>P {formatMacro(plannedMeal.totals.protein)}</span>
+          <span>C {formatMacro(plannedMeal.totals.carbs)}</span>
+          <span>F {formatMacro(plannedMeal.totals.fat)}</span>
+        </div>
+      ) : null}
+
       <div className="meal-progress">
         <div className="meal-progress-header">
           <span className="meal-progress-percent">{completionPercent}% complete</span>
@@ -58,6 +70,7 @@ function MealCard({
             inventory={inventory}
             linkedProduct={products[productLinks[item.id]?.productId]}
             productLink={productLinks[item.id]}
+            onOpenMealItem={onOpenMealItem}
             onOpenProduct={onOpenProduct}
             onToggle={onToggleItem}
           />

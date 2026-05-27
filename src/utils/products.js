@@ -23,6 +23,169 @@ const nutrientSpecs = [
   { id: 'dha', key: 'docosahexaenoic-acid', label: 'DHA' },
 ]
 
+const unitAliases = {
+  g: [
+    'g',
+    'gr',
+    'gram',
+    'grams',
+    'gramme',
+    'grammes',
+  ],
+  kg: [
+    'kg',
+    'kilo',
+    'kilos',
+    'kilogram',
+    'kilograms',
+    'kilogramme',
+    'kilogrammes',
+  ],
+  mg: [
+    'mg',
+    'milligram',
+    'milligrams',
+    'milligramme',
+    'milligrammes',
+  ],
+  ml: [
+    'ml',
+    'milliliter',
+    'milliliters',
+    'millilitre',
+    'millilitres',
+  ],
+  cl: ['cl', 'centiliter', 'centiliters', 'centilitre', 'centilitres'],
+  l: ['l', 'liter', 'liters', 'litre', 'litres'],
+  mcg: ['microgram', 'micrograms', 'mcg', 'ug', 'µg'],
+  iu: ['international units', 'international unit', 'iu'],
+  serving: [
+    'serving',
+    'servings',
+    'portion',
+    'portions',
+    'portionen',
+    'porcion',
+    'porciones',
+    'racion',
+    'raciones',
+  ],
+  slice: [
+    'slice',
+    'slices',
+    'tranche',
+    'tranches',
+    'rebanada',
+    'rebanadas',
+    'tajada',
+    'tajadas',
+    'fetta',
+    'fette',
+    'scheibe',
+    'scheiben',
+  ],
+  pill: [
+    'pill',
+    'pills',
+    'tablet',
+    'tablets',
+    'capsule',
+    'capsules',
+    'cap',
+    'caps',
+    'softgel',
+    'softgels',
+    'comprime',
+    'comprimes',
+    'gelule',
+    'gelules',
+    'capsula',
+    'capsulas',
+    'pastilla',
+    'pastillas',
+  ],
+  scoop: [
+    'scoop',
+    'scoops',
+    'scoopful',
+    'scoopfuls',
+    'cuillere',
+    'cuilleres',
+    'dosette',
+    'dosettes',
+    'mesure',
+    'mesures',
+  ],
+  cup: ['cup', 'cups', 'tasse', 'tasses', 'taza', 'tazas'],
+  tbsp: [
+    'tbsp',
+    'tablespoon',
+    'tablespoons',
+    'cuillere a soupe',
+    'cuilleres a soupe',
+    'cucharada',
+    'cucharadas',
+  ],
+  tsp: [
+    'tsp',
+    'teaspoon',
+    'teaspoons',
+    'cuillere a cafe',
+    'cuilleres a cafe',
+    'cucharadita',
+    'cucharaditas',
+  ],
+  piece: [
+    'piece',
+    'pieces',
+    'pc',
+    'pcs',
+    'morceau',
+    'morceaux',
+    'pieza',
+    'piezas',
+    'stuk',
+    'stuks',
+    'stuck',
+  ],
+  bottle: ['bottle', 'bottles', 'bouteille', 'bouteilles', 'botella', 'botellas'],
+  can: ['can', 'cans', 'tin', 'tins', 'boite', 'boites', 'lata', 'latas'],
+  pouch: [
+    'pouch',
+    'pouches',
+    'sachet',
+    'sachets',
+    'packet',
+    'packets',
+    'pack',
+    'packs',
+    'paquet',
+    'paquets',
+  ],
+  bar: ['bar', 'bars', 'barre', 'barres', 'barra', 'barras'],
+  biscuit: ['biscuit', 'biscuits', 'cookie', 'cookies', 'cracker', 'crackers'],
+  egg: ['egg', 'eggs', 'oeuf', 'oeufs', 'huevo', 'huevos'],
+  banana: ['banana', 'bananas', 'banane', 'bananes', 'platano', 'platanos'],
+  apple: ['apple', 'apples', 'pomme', 'pommes', 'manzana', 'manzanas'],
+  potato: ['potato', 'potatoes', 'pomme de terre', 'pommes de terre', 'patata', 'patatas'],
+  pepper: ['pepper', 'peppers', 'poivron', 'poivrons', 'pimiento', 'pimientos'],
+  tomato: ['tomato', 'tomatoes', 'tomate', 'tomates'],
+  cucumber: ['cucumber', 'cucumbers', 'concombre', 'concombres', 'pepino', 'pepinos'],
+}
+
+const unitAliasMap = Object.entries(unitAliases).reduce(
+  (aliases, [normalizedUnit, values]) => {
+    values.forEach((value) => {
+      aliases[value] = normalizedUnit
+    })
+
+    return aliases
+  },
+  {},
+)
+
+const referenceMeasureUnits = ['g', 'kg', 'mg', 'ml', 'cl', 'l']
+
 export const emptyNutrition = {
   caloriesPerServing: 0,
   proteinPerServing: 0,
@@ -59,34 +222,89 @@ function normalizeBarcode(value) {
   return cleanText(value).replace(/[^\d]/g, '')
 }
 
+function normalizeUnitText(value) {
+  return cleanText(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[().,;:[\]{}]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 export function normalizeUnit(value) {
-  const unit = cleanText(value).toLowerCase()
+  const unit = normalizeUnitText(value)
+  const withoutStopWords = unit
+    .replace(/\b(de|du|des|d|of|per|par)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const [firstWord] = withoutStopWords.split(' ')
 
-  if (['grams', 'gram', 'g'].includes(unit)) {
-    return 'g'
+  return (
+    unitAliasMap[unit] ??
+    unitAliasMap[withoutStopWords] ??
+    unitAliasMap[firstWord] ??
+    unit
+  )
+}
+
+function isReferenceMeasureUnit(unit) {
+  return referenceMeasureUnits.includes(normalizeUnit(unit))
+}
+
+function normalizeReferenceMeasure(amount, unit) {
+  const safeAmount = clampAmount(amount)
+  const normalizedUnit = normalizeUnit(unit)
+
+  if (normalizedUnit === 'kg') {
+    return { amount: roundAmount(safeAmount * 1000), unit: 'g' }
   }
 
-  if (['milliliters', 'milliliter', 'ml'].includes(unit)) {
-    return 'ml'
+  if (normalizedUnit === 'mg') {
+    return { amount: roundAmount(safeAmount / 1000), unit: 'g' }
   }
 
-  if (['micrograms', 'microgram', 'mcg', 'ug', 'µg'].includes(unit)) {
-    return 'mcg'
+  if (normalizedUnit === 'l') {
+    return { amount: roundAmount(safeAmount * 1000), unit: 'ml' }
   }
 
-  if (['international units', 'international unit', 'iu'].includes(unit)) {
-    return 'iu'
+  if (normalizedUnit === 'cl') {
+    return { amount: roundAmount(safeAmount * 10), unit: 'ml' }
   }
 
-  if (['servings', 'serving'].includes(unit)) {
-    return 'serving'
-  }
+  return { amount: safeAmount, unit: normalizedUnit }
+}
 
-  if (['pills', 'pill', 'capsules', 'capsule', 'tablets', 'tablet'].includes(unit)) {
-    return 'pill'
-  }
+function normalizeServingText(servingSize) {
+  return cleanText(servingSize)
+    .replace(/½/g, '1/2')
+    .replace(/¼/g, '1/4')
+    .replace(/¾/g, '3/4')
+    .replace(/⅓/g, '1/3')
+    .replace(/⅔/g, '2/3')
+    .replace(/,/g, '.')
+}
 
-  return unit
+function createParsedServing({
+  amount = 1,
+  unit = 'serving',
+  referenceAmount = 0,
+  referenceUnit = '',
+  text = '',
+}) {
+  const referenceMeasure = referenceAmount
+    ? normalizeReferenceMeasure(referenceAmount, referenceUnit)
+    : { amount: 0, unit: '' }
+
+  return {
+    amount: clampAmount(amount, 1) || 1,
+    unit: normalizeUnit(unit) || 'serving',
+    referenceAmount: referenceMeasure.amount,
+    referenceUnit: referenceMeasure.unit,
+    gramAmount: referenceMeasure.amount,
+    gramUnit: referenceMeasure.unit,
+    text,
+  }
 }
 
 export function formatProductAmount(value) {
@@ -100,31 +318,54 @@ export function formatProductAmount(value) {
 }
 
 export function parseServingSize(servingSize = '') {
-  const text = cleanText(servingSize).replace(',', '.')
-  const fractionMatch = text.match(/(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)\s*([a-zA-Zµ]+)?/)
+  const text = normalizeServingText(servingSize)
+  const amountUnitMatches = Array.from(
+    text.matchAll(/(\d+(?:\.\d+)?)\s*([\p{L}µ]+(?:\s+[\p{L}µ]+){0,3})\b/gu),
+  )
+  const measureMatch = amountUnitMatches.find((match) =>
+    isReferenceMeasureUnit(match[2]),
+  )
+  const countMatch = amountUnitMatches.find(
+    (match) => !isReferenceMeasureUnit(match[2]),
+  )
+  const fractionMatch = text.match(/(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)\s*([\p{L}µ]+)?/u)
 
   if (fractionMatch) {
     const numerator = toNumber(fractionMatch[1])
     const denominator = toNumber(fractionMatch[2], 1)
 
-    return {
+    return createParsedServing({
       amount: denominator ? roundAmount(numerator / denominator) : 0,
-      unit: cleanText(fractionMatch[3] ?? 'serving') || 'serving',
+      unit: fractionMatch[3] ?? 'serving',
+      referenceAmount: measureMatch ? measureMatch[1] : 0,
+      referenceUnit: measureMatch ? measureMatch[2] : '',
       text,
-    }
+    })
+  }
+
+  if (countMatch) {
+    return createParsedServing({
+      amount: clampAmount(countMatch[1], 1),
+      unit: countMatch[2],
+      referenceAmount: measureMatch ? measureMatch[1] : 0,
+      referenceUnit: measureMatch ? measureMatch[2] : '',
+      text,
+    })
   }
 
   const mixedMatch = text.match(/(\d+(?:\.\d+)?)\s*([a-zA-Zµ]+)?/)
 
   if (!mixedMatch) {
-    return { amount: 1, unit: 'serving', text }
+    return createParsedServing({ text })
   }
 
-  return {
+  return createParsedServing({
     amount: clampAmount(mixedMatch[1], 1),
-    unit: cleanText(mixedMatch[2] ?? 'serving') || 'serving',
+    unit: mixedMatch[2] ?? 'serving',
+    referenceAmount: measureMatch ? measureMatch[1] : 0,
+    referenceUnit: measureMatch ? measureMatch[2] : '',
     text,
-  }
+  })
 }
 
 function canScaleFrom100g(unit) {
@@ -208,8 +449,18 @@ export function sanitizeProduct(product = {}) {
   const id =
     cleanText(product.id) ||
     (barcode ? `barcode-${barcode}` : `manual-${Date.now().toString(36)}`)
-  const servingSize = clampAmount(product.servingSize, 1) || 1
-  const servingUnit = cleanText(product.servingUnit) || 'serving'
+  const rawServingText = cleanText(product.servingText)
+  const parsedServingText = parseServingSize(rawServingText)
+  const servingUnit = normalizeUnit(product.servingUnit) || 'serving'
+  const shouldTrustParsedServing =
+    source === 'open_food_facts' &&
+    rawServingText &&
+    parsedServingText.amount > 0 &&
+    parsedServingText.unit === servingUnit &&
+    !['g', 'ml'].includes(servingUnit)
+  const servingSize = shouldTrustParsedServing
+    ? parsedServingText.amount
+    : clampAmount(product.servingSize, parsedServingText.amount || 1) || 1
   const nutrients = product.nutrients && typeof product.nutrients === 'object'
     ? Object.fromEntries(
         Object.entries(product.nutrients)
@@ -232,7 +483,7 @@ export function sanitizeProduct(product = {}) {
     servingSize,
     servingUnit,
     servingText:
-      cleanText(product.servingText) ||
+      rawServingText ||
       `${formatProductAmount(servingSize)} ${servingUnit}`,
     caloriesPerServing: clampAmount(product.caloriesPerServing),
     proteinPerServing: clampAmount(product.proteinPerServing),
@@ -254,11 +505,14 @@ export function sanitizeProduct(product = {}) {
 
 export function mapOpenFoodFactsProduct(rawProduct = {}, barcode = '') {
   const parsedServing = parseServingSize(rawProduct.serving_size)
-  const servingAmount = clampAmount(
-    rawProduct.serving_quantity ?? parsedServing.amount,
-    parsedServing.amount || 1,
-  )
+  const servingAmount = parsedServing.amount || 1
   const servingUnit = parsedServing.unit || 'serving'
+  const referenceAmount = clampAmount(
+    parsedServing.referenceAmount || rawProduct.serving_quantity,
+  )
+  const referenceUnit = parsedServing.referenceUnit || 'g'
+  const nutritionAmount = referenceAmount || servingAmount
+  const nutritionUnit = referenceAmount ? referenceUnit : servingUnit
   const nutriments = rawProduct.nutriments ?? {}
   const product = sanitizeProduct({
     id: `barcode-${normalizeBarcode(rawProduct.code ?? barcode)}`,
@@ -271,40 +525,40 @@ export function mapOpenFoodFactsProduct(rawProduct = {}, barcode = '') {
     caloriesPerServing: nutrimentPerServing(
       nutriments,
       'energy-kcal',
-      servingAmount,
-      servingUnit,
+      nutritionAmount,
+      nutritionUnit,
     ),
     proteinPerServing: nutrimentPerServing(
       nutriments,
       'proteins',
-      servingAmount,
-      servingUnit,
+      nutritionAmount,
+      nutritionUnit,
     ),
     carbsPerServing: nutrimentPerServing(
       nutriments,
       'carbohydrates',
-      servingAmount,
-      servingUnit,
+      nutritionAmount,
+      nutritionUnit,
     ),
     fatPerServing: nutrimentPerServing(
       nutriments,
       'fat',
-      servingAmount,
-      servingUnit,
+      nutritionAmount,
+      nutritionUnit,
     ),
     fiberPerServing: nutrimentPerServing(
       nutriments,
       'fiber',
-      servingAmount,
-      servingUnit,
+      nutritionAmount,
+      nutritionUnit,
     ),
     sugarPerServing: nutrimentPerServing(
       nutriments,
       'sugars',
-      servingAmount,
-      servingUnit,
+      nutritionAmount,
+      nutritionUnit,
     ),
-    nutrients: mapNutrients(nutriments, servingAmount, servingUnit),
+    nutrients: mapNutrients(nutriments, nutritionAmount, nutritionUnit),
     imageUrl: rawProduct.image_front_small_url,
     source: 'open_food_facts',
   })
@@ -440,10 +694,10 @@ export function normalizeProductLinks(links = {}) {
       mealItemId: link.mealItemId ?? itemId,
       productId: link.productId,
       targetAmount: clampAmount(link.targetAmount, 1) || 1,
-      targetUnit: cleanText(link.targetUnit) || 'serving',
+      targetUnit: normalizeUnit(link.targetUnit) || 'serving',
       productAmountPerServing:
         clampAmount(link.productAmountPerServing, 1) || 1,
-      productUnit: cleanText(link.productUnit) || 'serving',
+      productUnit: normalizeUnit(link.productUnit) || 'serving',
       servingsNeeded: clampAmount(link.servingsNeeded, 1) || 1,
       updatedAt: link.updatedAt ?? new Date().toISOString(),
     }
@@ -537,7 +791,7 @@ export function inferProductUnitForTarget(item, product, targetUnit) {
     return targetUnit
   }
 
-  return product?.servingUnit ?? item.targetUnit ?? item.unit ?? 'serving'
+  return normalizeUnit(product?.servingUnit ?? item.targetUnit ?? item.unit) ?? 'serving'
 }
 
 export function calculateServingsNeeded({
@@ -567,7 +821,8 @@ export function createProductLink(item, product, overrides = {}) {
     1,
   ) || 1
   const targetUnit =
-    cleanText(overrides.targetUnit) || item.targetUnit || item.unit || 'serving'
+    normalizeUnit(overrides.targetUnit || item.targetUnit || item.unit) ||
+    'serving'
   const productAmountPerServing =
     clampAmount(
       overrides.productAmountPerServing ??
@@ -575,7 +830,7 @@ export function createProductLink(item, product, overrides = {}) {
       1,
     ) || 1
   const productUnit =
-    cleanText(overrides.productUnit) ||
+    normalizeUnit(overrides.productUnit) ||
     inferProductUnitForTarget(item, product, targetUnit)
   const servingsNeeded = calculateServingsNeeded({
     targetAmount,

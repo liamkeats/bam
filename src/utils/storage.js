@@ -1,6 +1,7 @@
 const STORAGE_KEYS = {
   dayHistory: 'bam-day-history',
   inventory: 'bam-inventory',
+  mealItemOverrides: 'bam-meal-item-overrides',
   productInventory: 'bam-product-inventory',
   productLinks: 'bam-product-links',
   products: 'bam-products',
@@ -62,6 +63,14 @@ export function saveInventory(inventory) {
   writeJSON(STORAGE_KEYS.inventory, inventory)
 }
 
+export function loadMealItemOverrides() {
+  return readJSON(STORAGE_KEYS.mealItemOverrides, {})
+}
+
+export function saveMealItemOverrides(mealItemOverrides) {
+  writeJSON(STORAGE_KEYS.mealItemOverrides, mealItemOverrides)
+}
+
 export function loadProducts() {
   return readJSON(STORAGE_KEYS.products, {})
 }
@@ -107,6 +116,7 @@ export function createBackupPayload(
   inventory,
   shoppingChecks,
   settings,
+  mealItemOverrides = {},
   products = {},
   productLinks = {},
   productInventory = {},
@@ -116,6 +126,7 @@ export function createBackupPayload(
     exportedAt: new Date().toISOString(),
     dayHistory,
     inventory,
+    mealItemOverrides,
     productInventory,
     productLinks,
     products,
@@ -142,6 +153,10 @@ export function parseBackupPayload(text) {
     inventory:
       parsed.inventory && typeof parsed.inventory === 'object'
         ? parsed.inventory
+        : {},
+    mealItemOverrides:
+      parsed.mealItemOverrides && typeof parsed.mealItemOverrides === 'object'
+        ? parsed.mealItemOverrides
         : {},
     productInventory:
       parsed.productInventory && typeof parsed.productInventory === 'object'
